@@ -195,7 +195,7 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
                 label_counter.update(label.cpu().numpy())
                 label = label.to(dev)
                 model_output = model(*inputs)
-                logits = _flatten_preds(model_output, label_mask)
+                logits = _flatten_preds(model_output, label_mask).float()
 
                 # logits = torch.softmax(logits, dim=1)
                 scores.append(logits.detach().cpu().numpy())

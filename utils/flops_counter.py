@@ -46,7 +46,7 @@ def get_model_complexity_info(model, inputs,
     return flops_count, params_count
 
 
-def flops_to_string(flops, units='GMac', precision=2):
+def flops_to_string(flops, units=None, precision=2):
     if units is None:
         if flops // 10**9 > 0:
             return str(round(flops / 10.**9, precision)) + ' GMac'
@@ -94,7 +94,7 @@ def accumulate_flops(self):
         return sum
 
 
-def print_model_with_flops(model, total_flops, total_params, units='GMac',
+def print_model_with_flops(model, total_flops, total_params, units=None,
                            precision=3, ost=sys.stdout):
     if total_flops < 1:
         total_flops = 1
@@ -135,7 +135,7 @@ def print_model_with_flops(model, total_flops, total_params, units='GMac',
             del m.accumulate_flops
 
     model.apply(add_extra_repr)
-    _logger.info(repr(model))
+    _logger.info(repr(model), color='lightgray')
     model.apply(del_extra_repr)
 
 
@@ -212,7 +212,7 @@ def start_flops_count(self, **kwargs):
             if verbose and not type(module) in (nn.Sequential, nn.ModuleList) and \
                not type(module) in seen_types:
                 _logger.info('Warning: module ' + type(module).__name__ +
-                             ' is treated as a zero-op.')
+                             ' is treated as a zero-op.', color='lightgray')
             seen_types.add(type(module))
 
     self.apply(partial(add_flops_counter_hook_function, **kwargs))

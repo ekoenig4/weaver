@@ -95,6 +95,7 @@ class DataConfig(object):
             assert(isinstance(self.label_value, list))
             self.label_names = ('_label_',)
             self.var_funcs['_label_'] = 'np.stack([%s], axis=1).argmax(1)' % (','.join(self.label_value))
+            self.var_funcs['_labelcheck_'] = 'np.stack([%s], axis=1).sum(1)' % (','.join(self.label_value))
         else:
             self.label_names = tuple(self.label_value.keys())
             self.var_funcs.update(self.label_value)
@@ -132,23 +133,25 @@ class DataConfig(object):
                 del self.var_funcs[k]
 
         if print_info:
-            _logger.info('preprocess config: %s', str(self.preprocess))
-            _logger.info('selection: %s', str(self.selection))
-            _logger.info('test_time_selection: %s', str(self.test_time_selection))
-            _logger.info('var_funcs:\n - %s', '\n - '.join(str(it) for it in self.var_funcs.items()))
-            _logger.info('input_names: %s', str(self.input_names))
-            _logger.info('input_dicts:\n - %s', '\n - '.join(str(it) for it in self.input_dicts.items()))
-            _logger.info('input_shapes:\n - %s', '\n - '.join(str(it) for it in self.input_shapes.items()))
-            _logger.info('preprocess_params:\n - %s', '\n - '.join(str(it) for it in self.preprocess_params.items()))
-            _logger.info('label_names: %s', str(self.label_names))
-            _logger.info('observer_names: %s', str(self.observer_names))
-            _logger.info('monitor_variables: %s', str(self.monitor_variables))
+            def _log(msg, *args, **kwargs):
+                _logger.info(msg, *args, color='lightgray', **kwargs)
+            _log('preprocess config: %s', str(self.preprocess))
+            _log('selection: %s', str(self.selection))
+            _log('test_time_selection: %s', str(self.test_time_selection))
+            _log('var_funcs:\n - %s', '\n - '.join(str(it) for it in self.var_funcs.items()))
+            _log('input_names: %s', str(self.input_names))
+            _log('input_dicts:\n - %s', '\n - '.join(str(it) for it in self.input_dicts.items()))
+            _log('input_shapes:\n - %s', '\n - '.join(str(it) for it in self.input_shapes.items()))
+            _log('preprocess_params:\n - %s', '\n - '.join(str(it) for it in self.preprocess_params.items()))
+            _log('label_names: %s', str(self.label_names))
+            _log('observer_names: %s', str(self.observer_names))
+            _log('monitor_variables: %s', str(self.monitor_variables))
             if opts['weights'] is not None:
                 if self.use_precomputed_weights:
-                    _logger.info('weight: %s' % self.var_funcs[self.weight_name])
+                    _log('weight: %s' % self.var_funcs[self.weight_name])
                 else:
                     for k in ['reweight_method', 'reweight_branches', 'reweight_bins', 'reweight_classes', 'class_weights', 'reweight_threshold', 'reweight_discard_under_overflow']:
-                        _logger.info('%s: %s' % (k, getattr(self, k)))
+                        _log('%s: %s' % (k, getattr(self, k)))
 
         # parse config
         self.keep_branches = set()
