@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import torch
 
 try:
     import awkward0 as awkward
@@ -100,8 +101,13 @@ def _batch_gather(array, indices):
         out[i][:maxlen] = a[idx[:maxlen]]
     return out
 
+def _rank_array(array):
+    order = awkward.JaggedArray.argsort(array)
+    ranks = awkward.JaggedArray.argsort(order)
+    return ranks
 
-def _get_variable_names(expr, exclude=['awkward', 'np', 'numpy', 'math']):
+
+def _get_variable_names(expr, exclude=['awkward', 'np', 'numpy', 'math','ak']):
     import ast
     root = ast.parse(expr)
     return sorted({node.id for node in ast.walk(root) if isinstance(
@@ -113,6 +119,6 @@ def _eval_expr(expr, table):
     tmp.update(
         {'math': math, 'np': np, 'awkward': awkward, '_concat': _concat, '_stack': _stack, '_pad': _pad,
          '_repeat_pad': _repeat_pad, '_clip': _clip, '_batch_knn': _batch_knn,
-         '_batch_permute_indices': _batch_permute_indices, '_batch_argsort': _batch_argsort,
+         '_batch_permute_indices': _batch_permute_indices, '_batch_argsort': _batch_argsort, '_rank_array':_rank_array,
          '_batch_gather': _batch_gather})
     return eval(expr, tmp)

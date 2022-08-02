@@ -3,11 +3,27 @@ import tqdm
 import time
 import torch
 
+
 from collections import defaultdict, Counter
 from .metrics import evaluate_metrics
 from ..data.tools import awkward, _concat
 from ..logger import _logger
 
+_use_batch_ptr = True
+def _get_batch_ptr(batch_array):
+  """Returns B x N array of batch indicies
+  B - number of batches
+  N - number of objects (jets/dijets/etc.)
+
+  Args:
+      batch_array (torch.Tensor): Tensor array with shape (B, -1, ..., -1, N), 
+      where the first and last dimensions are the batch and the number of objects respectively
+  """
+  shape = (batch_array.shape[0], batch_array.shape[-1])
+  arange = torch.arange(shape[0], device=batch_array.device)
+  batch = torch.repeat_interleave(arange, shape[-1])
+  batch = batch.reshape(shape)
+  return batch
 
 def _flatten_label(label, mask=None):
     if label.ndim > 1:
@@ -39,15 +55,21 @@ def train_classification(model, loss_func, opt, scheduler, train_loader, dev, ep
     num_batches = 0
     total_correct = 0
     count = 0
+
+    model_metrics = dict()
+    model.metrics.reset()
+
     start_time = time.time()
     with tqdm.tqdm(train_loader) as tq:
         for X, y, _ in tq:
             inputs = [X[k].to(dev) for k in data_config.input_names]
+            y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
             label = y[data_config.label_names[0]].long()
             try:
                 label_mask = y[data_config.label_names[0] + '_mask'].bool()
             except KeyError:
                 label_mask = None
+
             label = _flatten_label(label, label_mask)
             num_examples = label.shape[0]
             label_counter.update(label.cpu().numpy())
@@ -55,7 +77,16 @@ def train_classification(model, loss_func, opt, scheduler, train_loader, dev, ep
             opt.zero_grad()
             model_output = model(*inputs)
             logits = _flatten_preds(model_output, label_mask)
-            loss = loss_func(logits, label)
+
+            if _use_batch_ptr:
+                batch = _get_batch_ptr(label_mask)
+                batch = _flatten_label(batch, label_mask).to(dev)
+                loss = loss_func(logits, label, batch)
+                
+                model_metrics = model.metrics(logits, label, batch)
+            else:
+                loss = loss_func(logits, label)
+
             if grad_scaler is None:
                 loss.backward()
                 opt.step()
@@ -76,12 +107,17 @@ def train_classification(model, loss_func, opt, scheduler, train_loader, dev, ep
             total_loss += loss
             total_correct += correct
 
-            tq.set_postfix({
+            postfix = {
                 'lr': '%.2e' % scheduler.get_last_lr()[0] if scheduler else opt.defaults['lr'],
                 'Loss': '%.5f' % loss,
                 'AvgLoss': '%.5f' % (total_loss / num_batches),
                 'Acc': '%.5f' % (correct / num_examples),
-                'AvgAcc': '%.5f' % (total_correct / count)})
+                'AvgAcc': '%.5f' % (total_correct / count)}
+
+            if _use_batch_ptr:
+                postfix.update(model_metrics)
+
+            tq.set_postfix(postfix)
 
             if tb_helper:
                 tb_helper.write_scalars([
@@ -119,6 +155,9 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
                             eval_metrics=['roc_auc_score', 'roc_auc_score_matrix', 'confusion_matrix'],
                             tb_helper=None):
     model.eval()
+    
+    if loss_func is None:
+        loss_func = lambda *args : torch.Tensor([0])
 
     data_config = test_loader.dataset.config
 
@@ -128,6 +167,10 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
     total_correct = 0
     entry_count = 0
     count = 0
+
+    model_metrics = dict()
+    model.metrics.reset()
+
     scores = []
     labels = defaultdict(list)
     labels_counts = []
@@ -137,12 +180,14 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
         with tqdm.tqdm(test_loader) as tq:
             for X, y, Z in tq:
                 inputs = [X[k].to(dev) for k in data_config.input_names]
+                y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
                 label = y[data_config.label_names[0]].long()
                 entry_count += label.shape[0]
                 try:
                     label_mask = y[data_config.label_names[0] + '_mask'].bool()
                 except KeyError:
                     label_mask = None
+
                 if not for_training and label_mask is not None:
                     labels_counts.append(np.squeeze(label_mask.numpy().sum(axis=-1)))
                 label = _flatten_label(label, label_mask)
@@ -152,7 +197,8 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
                 model_output = model(*inputs)
                 logits = _flatten_preds(model_output, label_mask)
 
-                scores.append(torch.softmax(logits, dim=1).detach().cpu().numpy())
+                # logits = torch.softmax(logits, dim=1)
+                scores.append(logits.detach().cpu().numpy())
                 for k, v in y.items():
                     labels[k].append(_flatten_label(v, label_mask).cpu().numpy())
                 if not for_training:
@@ -160,19 +206,33 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
                         observers[k].append(v.cpu().numpy())
 
                 _, preds = logits.max(1)
-                loss = 0 if loss_func is None else loss_func(logits, label).item()
+
+                if _use_batch_ptr:
+                    batch = _get_batch_ptr(label_mask)
+                    batch = _flatten_label(batch, label_mask).to(dev)
+                    loss = loss_func(logits, label, batch).item()
+                
+                    model_metrics = model.metrics(logits, label, batch)
+                else:
+                    loss = loss_func(logits, label).item()
 
                 num_batches += 1
                 count += num_examples
                 correct = (preds == label).sum().item()
-                total_loss += loss * num_examples
+                # total_loss += loss * num_examples
+                total_loss += loss
                 total_correct += correct
-
-                tq.set_postfix({
+                
+                postfix = {
                     'Loss': '%.5f' % loss,
-                    'AvgLoss': '%.5f' % (total_loss / count),
+                    'AvgLoss': '%.5f' % (total_loss / num_batches),
                     'Acc': '%.5f' % (correct / num_examples),
-                    'AvgAcc': '%.5f' % (total_correct / count)})
+                    'AvgAcc': '%.5f' % (total_correct / count)}
+
+                if _use_batch_ptr:
+                    postfix.update(model_metrics)
+
+                tq.set_postfix(postfix)
 
                 if tb_helper:
                     if tb_helper.custom_fn:
@@ -220,7 +280,6 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
                     labels[k] = v.reshape((entry_count, -1))
         observers = {k: _concat(v) for k, v in observers.items()}
         return total_correct / count, scores, labels, observers
-
 
 def evaluate_onnx(model_path, test_loader, eval_metrics=['roc_auc_score', 'roc_auc_score_matrix', 'confusion_matrix']):
     import onnxruntime
@@ -281,17 +340,37 @@ def train_regression(model, loss_func, opt, scheduler, train_loader, dev, epoch,
     sum_abs_err = 0
     sum_sqr_err = 0
     count = 0
+
+    model_metrics = dict()
+    model.metrics.reset()
+
     start_time = time.time()
     with tqdm.tqdm(train_loader) as tq:
         for X, y, _ in tq:
             inputs = [X[k].to(dev) for k in data_config.input_names]
-            label = y[data_config.label_names[0]].float()
+            y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
+            label = y[data_config.label_names[0]]
+            try:
+                label_mask = y[data_config.label_names[0] + '_mask'].bool()
+            except KeyError:
+                label_mask = None
+
+            label = _flatten_label(label, label_mask)
             num_examples = label.shape[0]
             label = label.to(dev)
             opt.zero_grad()
             model_output = model(*inputs)
-            preds = model_output.squeeze()
-            loss = loss_func(preds, label)
+            preds = _flatten_preds(model_output, label_mask).squeeze()
+
+            if _use_batch_ptr:
+                batch = _get_batch_ptr(label_mask)
+                batch = _flatten_label(batch, label_mask).to(dev)
+                loss = loss_func(preds, label, batch)
+                
+                model_metrics = model.metrics(preds, label, batch)
+            else:
+                loss = loss_func(preds, label)
+
             if grad_scaler is None:
                 loss.backward()
                 opt.step()
@@ -314,15 +393,20 @@ def train_regression(model, loss_func, opt, scheduler, train_loader, dev, epoch,
             sqr_err = e.square().sum().item()
             sum_sqr_err += sqr_err
 
-            tq.set_postfix({
+            postfix = {
                 'lr': '%.2e' % scheduler.get_last_lr()[0] if scheduler else opt.defaults['lr'],
                 'Loss': '%.5f' % loss,
                 'AvgLoss': '%.5f' % (total_loss / num_batches),
-                'MSE': '%.5f' % (sqr_err / num_examples),
-                'AvgMSE': '%.5f' % (sum_sqr_err / count),
-                'MAE': '%.5f' % (abs_err / num_examples),
-                'AvgMAE': '%.5f' % (sum_abs_err / count),
-            })
+                # 'MSE': '%.5f' % (sqr_err / num_examples),
+                # 'AvgMSE': '%.5f' % (sum_sqr_err / count),
+                # 'MAE': '%.5f' % (abs_err / num_examples),
+                # 'AvgMAE': '%.5f' % (sum_abs_err / count),
+            }
+            
+            if _use_batch_ptr:
+                postfix.update(model_metrics)
+
+            tq.set_postfix(postfix)
 
             if tb_helper:
                 tb_helper.write_scalars([
@@ -363,6 +447,10 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
                                       'mean_gamma_deviance'],
                         tb_helper=None):
     model.eval()
+    model.metrics.reset()
+    
+    if loss_func is None:
+        loss_func = lambda *args : torch.Tensor([0])
 
     data_config = test_loader.dataset.config
 
@@ -371,6 +459,9 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
     sum_sqr_err = 0
     sum_abs_err = 0
     count = 0
+
+    model_metrics = dict()
+
     scores = []
     labels = defaultdict(list)
     observers = defaultdict(list)
@@ -379,11 +470,18 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
         with tqdm.tqdm(test_loader) as tq:
             for X, y, Z in tq:
                 inputs = [X[k].to(dev) for k in data_config.input_names]
-                label = y[data_config.label_names[0]].float()
+                y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
+                label = y[data_config.label_names[0]]
+                try:
+                    label_mask = y[data_config.label_names[0] + '_mask'].bool()
+                except KeyError:
+                    label_mask = None
+
+                label = _flatten_label(label, label_mask)
                 num_examples = label.shape[0]
                 label = label.to(dev)
                 model_output = model(*inputs)
-                preds = model_output.squeeze()
+                preds = _flatten_preds(model_output, label_mask).squeeze()
 
                 scores.append(preds.detach().cpu().numpy())
                 for k, v in y.items():
@@ -392,7 +490,14 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
                     for k, v in Z.items():
                         observers[k].append(v.cpu().numpy())
 
-                loss = 0 if loss_func is None else loss_func(preds, label).item()
+                if _use_batch_ptr:
+                    batch = _get_batch_ptr(label_mask)
+                    batch = _flatten_label(batch, label_mask).to(dev)
+                    loss = loss_func(preds, label, batch).item()
+                    
+                    model_metrics = model.metrics(preds, label, batch)
+                else:
+                    loss = loss_func(preds, label).item()
 
                 num_batches += 1
                 count += num_examples
@@ -403,14 +508,19 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
                 sqr_err = e.square().sum().item()
                 sum_sqr_err += sqr_err
 
-                tq.set_postfix({
+                postfix = {
                     'Loss': '%.5f' % loss,
                     'AvgLoss': '%.5f' % (total_loss / count),
-                    'MSE': '%.5f' % (sqr_err / num_examples),
-                    'AvgMSE': '%.5f' % (sum_sqr_err / count),
-                    'MAE': '%.5f' % (abs_err / num_examples),
-                    'AvgMAE': '%.5f' % (sum_abs_err / count),
-                })
+                    # 'MSE': '%.5f' % (sqr_err / num_examples),
+                    # 'AvgMSE': '%.5f' % (sum_sqr_err / count),
+                    # 'MAE': '%.5f' % (abs_err / num_examples),
+                    # 'AvgMAE': '%.5f' % (sum_abs_err / count),
+                }
+                
+                if _use_batch_ptr:
+                    postfix.update(model_metrics)
+
+                tq.set_postfix(postfix)
 
                 if tb_helper:
                     if tb_helper.custom_fn:
@@ -447,8 +557,6 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
         # convert 2D labels/scores
         observers = {k: _concat(v) for k, v in observers.items()}
         return total_loss / count, scores, labels, observers
-
-
 class TensorboardHelper(object):
 
     def __init__(self, tb_comment, tb_custom_fn):

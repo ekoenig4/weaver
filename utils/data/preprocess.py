@@ -11,8 +11,17 @@ from .fileio import _read_files
 def _apply_selection(table, selection):
     if selection is None:
         return
+
+    object_selected = None
     selected = _eval_expr(selection, table).astype('bool')
+
+    if not isinstance(selected, np.ndarray):
+        object_selected = selected
+        selected = selected.sum()>0
+
     for k in table.keys():
+        if object_selected is not None and not isinstance(table[k], np.ndarray):
+            table[k] = table[k][object_selected]
         table[k] = table[k][selected]
     return selected.sum()
 

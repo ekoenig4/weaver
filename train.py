@@ -107,6 +107,9 @@ parser.add_argument('--profile', action='store_true', default=False,
                     help='run the profiler')
 
 
+parser.add_argument('--ranking-mode', action='store_true', default=False,
+                    help='run in ranking mode if this flag is set; otherwise run in classification mode')
+
 def to_filelist(args, mode='train'):
     if mode == 'train':
         flist = args.data_train
@@ -265,7 +268,7 @@ def onnx(args, model, data_config, model_info):
                       input_names=model_info['input_names'],
                       output_names=model_info['output_names'],
                       dynamic_axes=model_info.get('dynamic_axes', None),
-                      opset_version=13)
+                      opset_version=11)
     _logger.info('ONNX model saved to %s', args.export_onnx)
 
     preprocessing_json = os.path.join(os.path.dirname(args.export_onnx), 'preprocess.json')
@@ -515,10 +518,15 @@ def main(args):
         _logger.info('Running in regression mode')
         from utils.nn.tools import train_regression as train
         from utils.nn.tools import evaluate_regression as evaluate
+    elif args.ranking_mode:
+        _logger.info('Running ranking mode')
+        from utils.nn.tools import train_ranking as train
+        from utils.nn.tools import evaluate_ranking as evaluate
     else:
         _logger.info('Running in classification mode')
         from utils.nn.tools import train_classification as train
         from utils.nn.tools import evaluate_classification as evaluate
+        
 
     # training/testing mode
     training_mode = not args.predict
@@ -576,6 +584,8 @@ def main(args):
             loss_func = torch.nn.CrossEntropyLoss()
             _logger.warning('Loss function not defined in %s. Will use `torch.nn.CrossEntropyLoss()` by default.',
                             args.network_config)
+        # make sure all loss function parameters are on the correct device
+        loss_func = loss_func.to(dev)
 
         # optimizer & learning rate
         opt, scheduler = optim(args, model, dev)
