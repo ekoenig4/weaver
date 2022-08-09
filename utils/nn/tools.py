@@ -25,6 +25,17 @@ def _get_batch_ptr(batch_array):
   batch = batch.reshape(shape)
   return batch
 
+from torch_scatter import scatter_max
+
+def scatter_topk(output, batch, k=1, dim=0):
+  values, args = [], []
+  for _ in range(k):
+    v, a = scatter_max(output, batch, dim=0)
+    output[a] = -999
+    values.append(v)
+    args.append(a)
+  return torch.stack(values), torch.stack(args)
+
 def _flatten_label(label, mask=None):
     if label.ndim > 1:
         label = label.view(-1)
@@ -32,7 +43,6 @@ def _flatten_label(label, mask=None):
             label = label[mask.view(-1)]
     # print('label', label.shape, label)
     return label
-
 
 def _flatten_preds(preds, mask=None, label_axis=1):
     if preds.ndim > 2:
