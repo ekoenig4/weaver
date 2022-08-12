@@ -17,6 +17,10 @@ from utils.logger import _logger, _configLogger
 from utils.dataset import SimpleIterDataset
 
 parser = argparse.ArgumentParser()
+
+parser.add_argument('--lightning-mode', action='store_true', default=False,
+                    help='expects model to be a pytorch lightning model, and trains it with pytorch lightning')
+
 parser.add_argument('--regression-mode', action='store_true', default=False,
                     help='run in regression mode if this flag is set; otherwise run in classification mode')
 parser.add_argument('-c', '--data-config', type=str, default='data/ak15_points_pf_sv_v0.yaml',
@@ -128,9 +132,6 @@ parser.add_argument('--profile', action='store_true', default=False,
 parser.add_argument('--backend', type=str, choices=['gloo', 'nccl', 'mpi'], default=None,
                     help='backend for distributed training')
 
-
-parser.add_argument('--ranking-mode', action='store_true', default=False,
-                    help='run in ranking mode if this flag is set; otherwise run in classification mode')
 
 def to_filelist(args, mode='train'):
     if mode == 'train':
@@ -655,15 +656,18 @@ def main(args):
     if args.file_fraction < 1:
         _logger.warning('Use of `file-fraction` is not recommended in general -- prefer using `data-fraction` instead.')
 
+    if args.lightning_mode:
+        _logger.info('Running in lightning mode')
+        from utils.nn.lightning_tools import train_lightning as train
+        from utils.nn.lightning_tools import evaluate_lightning as evaluate
+        import utils.nn.lightning_tools as lt
+        lt.trainer = lt.set_trainer(args)
+        
     # classification/regression mode
-    if args.regression_mode:
+    elif args.regression_mode:
         _logger.info('Running in regression mode')
         from utils.nn.tools import train_regression as train
         from utils.nn.tools import evaluate_regression as evaluate
-    elif args.ranking_mode:
-        _logger.info('Running ranking mode')
-        from utils.nn.tools import train_ranking as train
-        from utils.nn.tools import evaluate_ranking as evaluate
     else:
         _logger.info('Running in classification mode')
         from utils.nn.tools import train_classification as train
@@ -791,7 +795,7 @@ def main(args):
                 if args.model_prefix and (args.backend is None or local_rank == 0):
                     shutil.copy2(args.model_prefix + '_epoch-%d_state.pt' %
                                  epoch, args.model_prefix + '_best_epoch_state.pt')
-                    torch.save(model, args.model_prefix + '_best_epoch_full.pt')
+                    torch.save(model.state_dict(), args.model_prefix + '_best_epoch_full.pt')
             _logger.info('Epoch #%d: Current validation metric: %.5f (best: %.5f)' %
                          (epoch, valid_metric, best_valid_metric), color='bold')
 
@@ -827,7 +831,7 @@ def main(args):
                 test_metric, scores, labels, observers = evaluate_onnx(args.model_prefix, test_loader)
             else:
                 test_metric, scores, labels, observers = evaluate(
-                    model, test_loader, dev, epoch=None, for_training=False, tb_helper=tb)
+                    model, test_loader, dev, loss_func=loss_func, epoch=None, for_training=False, tb_helper=tb)
             _logger.info('Test metric %.5f' % test_metric, color='bold')
             del test_loader
 

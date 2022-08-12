@@ -29,12 +29,13 @@ from torch_scatter import scatter_max
 
 def scatter_topk(output, batch, k=1, dim=0):
   values, args = [], []
+  copy = output.clone()
   for _ in range(k):
-    v, a = scatter_max(output, batch, dim=0)
-    output[a] = -999
+    v, a = scatter_max(copy, batch, dim=0)
+    copy[a] = -999
     values.append(v)
     args.append(a)
-  return torch.stack(values), torch.stack(args)
+  return torch.stack(values).T, torch.stack(args).T
 
 def _flatten_label(label, mask=None):
     if label.ndim > 1:
@@ -73,7 +74,7 @@ def train_classification(model, loss_func, opt, scheduler, train_loader, dev, ep
     with tqdm.tqdm(train_loader) as tq:
         for X, y, _ in tq:
             inputs = [X[k].to(dev) for k in data_config.input_names]
-            y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
+            y = model.get_labels(*inputs, y, data_config) if hasattr(model, 'get_labels') else y
             label = y[data_config.label_names[0]].long()
             try:
                 label_mask = y[data_config.label_names[0] + '_mask'].bool()
@@ -190,7 +191,7 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
         with tqdm.tqdm(test_loader) as tq:
             for X, y, Z in tq:
                 inputs = [X[k].to(dev) for k in data_config.input_names]
-                y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
+                y = model.get_labels(*inputs, y, data_config) if hasattr(model, 'get_labels') else y
                 label = y[data_config.label_names[0]].long()
                 entry_count += label.shape[0]
                 try:
@@ -358,7 +359,7 @@ def train_regression(model, loss_func, opt, scheduler, train_loader, dev, epoch,
     with tqdm.tqdm(train_loader) as tq:
         for X, y, _ in tq:
             inputs = [X[k].to(dev) for k in data_config.input_names]
-            y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
+            y = model.get_labels(*inputs, y, data_config) if hasattr(model, 'get_labels') else y
             label = y[data_config.label_names[0]]
             try:
                 label_mask = y[data_config.label_names[0] + '_mask'].bool()
@@ -480,7 +481,7 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
         with tqdm.tqdm(test_loader) as tq:
             for X, y, Z in tq:
                 inputs = [X[k].to(dev) for k in data_config.input_names]
-                y = model.get_labels(inputs, y, data_config) if hasattr(model, 'get_labels') else y
+                y = model.get_labels(*inputs, y, data_config) if hasattr(model, 'get_labels') else y
                 label = y[data_config.label_names[0]]
                 try:
                     label_mask = y[data_config.label_names[0] + '_mask'].bool()
