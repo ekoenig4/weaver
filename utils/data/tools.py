@@ -1,6 +1,6 @@
 import numpy as np
 import math
-import torch
+import functools
 
 try:
     import awkward0 as awkward
@@ -108,6 +108,17 @@ def _rank_array(array):
     ranks = awkward.JaggedArray.argsort(order)
     return ranks
 
+import vector
+def _build_p4(pt, m, eta, phi):
+    return vector.obj(pt=pt,m=m,eta=eta,phi=phi)
+
+def _sum_p4(pt, m, eta, phi, nobjs=8):
+    p4s = [ _build_p4(pt=pt[:,i], m=m[:,i], eta=eta[:,i], phi=phi[:,i]) for i in range(nobjs) ]
+    p4 = functools.reduce(vector.Lorentz.add, p4s)
+    return p4
+
+# def _boost_p4(p4, boost):
+#     return p4.boost_p4(boost)
 
 def _get_variable_names(expr, exclude=['awkward', 'np', 'numpy', 'math','ak']):
     import ast
@@ -120,7 +131,7 @@ def _eval_expr(expr, table):
     tmp = {k: table[k] for k in _get_variable_names(expr)}
     tmp.update(
         {'math': math, 'np': np, 'awkward': awkward, '_concat': _concat, '_stack': _stack, '_pad': _pad,
-         '_repeat_pad': _repeat_pad, '_clip': _clip, '_batch_knn': _batch_knn,
+         '_repeat_pad': _repeat_pad, '_clip': _clip, '_batch_knn': _batch_knn, '_sum_p4':_sum_p4, '_build_p4':_build_p4,
          '_batch_permute_indices': _batch_permute_indices, '_batch_argsort': _batch_argsort, '_rank_array':_rank_array,
          '_batch_gather': _batch_gather})
     return eval(expr, tmp)

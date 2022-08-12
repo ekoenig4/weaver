@@ -47,12 +47,74 @@ def get_group_feature_v1(x, group_idx):
     batch_size, num_dims, num_points = x.size()
 
     idx_base = torch.arange(0, batch_size, device=x.device).view(-1, 1, 1) * num_points
-    group_idx = group_idx + idx_base
+    group_idx = group_idx.to(x.device) + idx_base
 
     fts = x.transpose(2, 1).reshape(-1, num_dims)  # -> (batch_size, num_points, num_dims) -> (batch_size*num_points, num_dims)
     fts = fts[group_idx, :]
     fts = fts.permute(0, 3, 1, 2).contiguous()  # (batch_size, num_dims, num_groups, num_points)
     return fts
+
+def p4_to_cartesian(m, pt, eta, phi):
+  """Converts collider p4 to cartesian p4
+
+  Args:
+      m (Tensor): Tensor of mass
+      pt (Tensor): Tensor of pt
+      eta (Tensor): Tensor of eta
+      phi (Tensor): Tensor of phi
+
+  Returns:
+      tuple: Tuple of cartesian p4 (E, Px, Py, Pz)
+  """
+  px = pt*torch.cos(phi)
+  py = pt*torch.sin(phi)
+  pz = pt*torch.sinh(eta)
+  p = pt*torch.cosh(eta)
+  e = torch.sqrt((m)**2 + (p)**2)
+  return e, px, py, pz
+
+def array_to_cartesian(array):
+  """Converts collider array to cartesian array
+
+  Args:
+      array (Tensor): Tensor of shape (batches, features, objects). Where features are ordered pt, m, eta, phi
+
+  Returns:
+      Tensor: Tensor of cartesian p4
+  """
+  e, px, py, pz = p4_to_cartesian(array[:,1], array[:,0], array[:,2], array[:,3])
+  return torch.stack([e, px, py, pz], dim=1)
+
+def p4_to_collider(e, px, py, pz):
+  """Converts cartesian p4 to collider p4
+
+  Args:
+      e (Tensor): Tensor of energy
+      px (Tensor): Tensor of Px
+      py (Tensor): Tensor of Py
+      pz (Tensor): Tensor of Pz
+
+  Returns:
+      tuple: Tuple of collider p4 (M, Pt, Eta, Phi)
+  """
+  pt = torch.sqrt( px**2 + py**2 )
+  phi = torch.atan(py/px)
+  eta = torch.asinh(pz/pt)
+  m2 = e**2 - (pt*torch.cosh(eta))**2
+  m = torch.where(m2 < 0, -torch.sqrt( -m2 ), torch.sqrt(m2)) 
+  return m, pt, eta, phi
+
+def array_to_collider(array):
+  """Converts cartesian array to collider array
+
+  Args:
+      array (Tensor): Tensor of shape (batches, features, objects). Where features are ordered e, px, py, pz
+
+  Returns:
+      Tensor: Tensor of collider p4
+  """
+  m, pt, eta, phi = p4_to_collider(array[:,0], array[:,1], array[:,2], array[:,3])
+  return torch.stack([pt, m, eta, phi], dim=1)
 
 def _calc_p4(m, pt, eta, phi, params=None):
   """Calculate p4 vector for grouped objects. Feature vector shape (batch x features x p4 x groups). 
@@ -69,19 +131,14 @@ def _calc_p4(m, pt, eta, phi, params=None):
     eta = unscale(eta, params['eta'])
     phi = unscale(phi, params['phi'])
 
-  px = pt*torch.cos(phi)
-  py = pt*torch.sin(phi)
-  pz = pt*torch.sinh(eta)
-  p = pt*torch.cosh(eta)
-  e = torch.sqrt((m)**2 + (p)**2)
+  e, px, py, pz = p4_to_cartesian(m, pt, eta, phi)
+
   px = px.sum(dim=1)
   py = py.sum(dim=1)
   pz = pz.sum(dim=1)
   e = e.sum(dim=1)
-  pt = torch.sqrt( px**2 + py**2 )
-  phi = torch.atan(py/px)
-  eta = torch.asinh(pz/pt)
-  m = np.sqrt( e**2 - (pt*torch.cosh(eta))**2 )
+
+  m, pt, eta, phi = p4_to_collider(e, px, py, pz)
 
   if params is not None:
     scale = lambda x, param: param['scale']*(x-param['center'])
