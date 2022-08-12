@@ -173,7 +173,7 @@ class _SimpleIter(object):
         self.restart()
 
     def restart(self):
-        print('=== Restarting DataIter %s, seed=%s ===' % (self._name, self._seed))
+        _logger.debug('=== Restarting DataIter %s, seed=%s ===' % (self._name, self._seed))
         # re-shuffle filelist and load range if for training
         filelist = self.worker_filelist.copy()
         if self._sampler_options['shuffle']:
@@ -202,7 +202,7 @@ class _SimpleIter(object):
             str(self.load_range),
             '\n'.join(self.filelist[: 3]) + '\n ... ' + self.filelist[-1],)
 
-        _logger.info('Restarted DataIter %s, load_range=%s, file_list:\n%s' %
+        _logger.debug('Restarted DataIter %s, load_range=%s, file_list:\n%s' %
                      (self._name, str(self.load_range), json.dumps(self.worker_file_dict, indent=2)))
 
         # reset file fetching cursor

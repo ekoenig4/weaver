@@ -21,6 +21,7 @@ def _configLogger(name, stdout=sys.stdout, filename=None, loglevel=logging.INFO)
         logfile.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s'))
         logger.addHandler(logfile)
 
+    logger.propagate = False
 
 class ColoredLogger():
     color_dict = {
@@ -74,7 +75,6 @@ class ColoredLogger():
 
 
 _logger = ColoredLogger('weaver')
-
 
 @lru_cache(10)
 def warn_once(msg, logger=_logger):
