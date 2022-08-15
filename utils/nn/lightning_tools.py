@@ -3,6 +3,7 @@ import numpy as np
 import tqdm
 import time
 import torch
+import os
 
 from collections import defaultdict, Counter
 from .metrics import evaluate_metrics
@@ -17,20 +18,35 @@ from pytorch_lightning.callbacks import TQDMProgressBar
 import logging
 logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 
+from pytorch_lightning.utilities.warnings import PossibleUserWarning
+
+import warnings
+warnings.simplefilter("ignore", category=PossibleUserWarning)
+
 trainer = None
+
+try:
+    from pytorch_lightning.callbacks import RichProgressBar as LitProgressBar
+    LitProgressBar()
+except ModuleNotFoundError:
+    from pytorch_lightning.callbacks import TQDMProgressBar as LitProgressBar
 
 # Called in train.py to set trainer to be used to train lightning model
 def set_trainer(args):
+    path = os.path.dirname(args.model_prefix)
+
     return Trainer(
                 accelerator="gpu" if args.gpus else "cpu",
+                precision=16,
                 max_epochs=1,
                 max_steps=args.steps_per_epoch if args.steps_per_epoch else -1,
                 enable_checkpointing=False, # Weaver already handles checkpoints
-                default_root_dir=args.log.replace('logs/train.log',''),
+                default_root_dir=path,
                 logger=TensorBoardLogger(
-                    args.log.replace('logs/train.log','tb'),
-                    name="",
+                    f'{path}/',
+                    version='tb',
                 ),
+                callbacks=LitProgressBar()
             )
 
 def train_lightning(model, loss_func, opt, scheduler, train_loader, dev, epoch, steps_per_epoch=None, grad_scaler=None, tb_helper=None):

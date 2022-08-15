@@ -47,7 +47,7 @@ def get_group_feature_v1(x, group_idx):
     batch_size, num_dims, num_points = x.size()
 
     idx_base = torch.arange(0, batch_size, device=x.device).view(-1, 1, 1) * num_points
-    group_idx = group_idx.to(x.device) + idx_base
+    group_idx = group_idx + idx_base
 
     fts = x.transpose(2, 1).reshape(-1, num_dims)  # -> (batch_size, num_points, num_dims) -> (batch_size*num_points, num_dims)
     fts = fts[group_idx, :]

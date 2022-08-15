@@ -25,6 +25,16 @@ def _apply_selection(table, selection):
         table[k] = table[k][selected]
     return selected.sum()
 
+def _get_selection_entries(table, selection):
+    if selection is None:
+        return
+
+    selected = _eval_expr(selection, table).astype('bool')
+
+    if not isinstance(selected, np.ndarray):
+        selected = selected.sum()>0
+
+    return selected.sum()
 
 def _build_new_variables(table, funcs):
     if funcs is None:

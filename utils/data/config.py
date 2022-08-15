@@ -196,12 +196,12 @@ class DataConfig(object):
             yaml.safe_dump(self.options, f, sort_keys=False)
 
     @classmethod
-    def load(cls, fp, load_observers=True):
+    def load(cls, fp, load_observers=True, print_info=True):
         with open(fp) as f:
             options = yaml.safe_load(f)
         if not load_observers:
             options['observers'] = None
-        return cls(**options)
+        return cls(**options, print_info=print_info)
 
     def copy(self):
         return self.__class__(print_info=False, **copy.deepcopy(self.options))

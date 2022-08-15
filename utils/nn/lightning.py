@@ -68,14 +68,16 @@ class Lightning(pl.LightningModule):
         """
         return self.loss(output, label, batch_ptr)
 
-    def shared_step(self, batch, batch_idx, tag=None):
-        inputs, (label, label_mask), batch_ptr, Z = self.get_input(*batch)
-
-        output = self(*inputs)
-
+    def flatten_output(self, output, label, batch_ptr, label_mask):
         output = _flatten_preds(output, label_mask).squeeze()
         label = _flatten_label(label, label_mask)
         batch_ptr = _flatten_label(batch_ptr, label_mask)
+        return output, label, batch_ptr
+
+    def shared_step(self, batch, batch_idx, tag=None):
+        inputs, (label, label_mask), batch_ptr, Z = self.get_input(*batch)
+        output = self(*inputs)
+        output, label, batch_ptr = self.flatten_output(output, label, batch_ptr, label_mask)
 
         metrics = {
             'loss': self.get_loss(output, label, batch_ptr),
@@ -99,24 +101,20 @@ class Lightning(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         inputs, (label, label_mask), batch_ptr, Z = self.get_input(*batch)
-
         output = self(*inputs)
-
-        output = _flatten_preds(output, label_mask).squeeze()
-        label = _flatten_label(label, label_mask)
-        batch_ptr = _flatten_label(batch_ptr, label_mask)
+        output, label, batch_ptr = self.flatten_output(output, label, batch_ptr, label_mask)
 
         metrics = {
             'loss': self.get_loss(output, label, batch_ptr),
             **self.get_metrics(output, label, batch_ptr)
         }
+
         self.log_scalar(metrics, tag='test', prog_bar=True, on_epoch=True)
 
         self.scores.append( output.detach().cpu().numpy() )
         self.labels['label'].append( label.detach().cpu().numpy() )
         for k, v in Z.items():
             self.observers[k].append(v.cpu().numpy())
-
 
         return {f'test_{key}': value for key, value in metrics.items()}
 

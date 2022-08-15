@@ -20,7 +20,6 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--lightning-mode', action='store_true', default=False,
                     help='expects model to be a pytorch lightning model, and trains it with pytorch lightning')
-
 parser.add_argument('--regression-mode', action='store_true', default=False,
                     help='run in regression mode if this flag is set; otherwise run in classification mode')
 parser.add_argument('-c', '--data-config', type=str, default='data/ak15_points_pf_sv_v0.yaml',
@@ -38,7 +37,7 @@ parser.add_argument('-t', '--data-test', nargs='*', default=[],
                     help='testing files; supported syntax:'
                          ' (a) plain list, `--data-test /path/to/a/* /path/to/b/*`;'
                          ' (b) keyword-based, `--data-test a:/path/to/a/* b:/path/to/b/*`, will produce output_a, output_b;'
-                         ' (c) split output per N input files, `--data-test a%10:/path/to/a/*`, will split per 10 input files')
+                         ' (c) split output per N input files, `--data-test a%%10:/path/to/a/*`, will split per 10 input files')
 parser.add_argument('--data-fraction', type=float, default=1,
                     help='fraction of events to load from each file; for training, the events are randomly selected for each epoch')
 parser.add_argument('--file-fraction', type=float, default=1,
@@ -48,7 +47,8 @@ parser.add_argument('--fetch-by-files', action='store_true', default=False,
                          'Otherwise (default), load a small fraction of events from all files each time, which helps reduce variations in the sample composition.')
 parser.add_argument('--fetch-step', type=float, default=0.01,
                     help='fraction of events to load each time from every file (when ``--fetch-by-files`` is disabled); '
-                         'Or: number of files to load each time (when ``--fetch-by-files`` is enabled). Shuffling & sampling is done within these events, so set a large enough value.')
+                         'Or: number of files to load each time (when ``--fetch-by-files`` is enabled). Shuffling & sampling is done within these events, so set a large enough value.'
+                         )
 parser.add_argument('--in-memory', action='store_true', default=False,
                     help='load the whole dataset (and perform the preprocessing) only once and keep it in memory for the entire run')
 parser.add_argument('--train-val-split', type=float, default=0.8,
@@ -68,7 +68,7 @@ parser.add_argument('-o', '--network-option', nargs=2, action='append', default=
                     help='options to pass to the model class constructor, e.g., `--network-option use_counts False`')
 parser.add_argument('-m', '--model-prefix', type=str, default='models/{auto}/network',
                     help='path to save or load the model; for training, this will be used as a prefix, so model snapshots '
-                         'will saved to `{model_prefix}_epoch-%d_state.pt` after each epoch, and the one with the best '
+                         'will saved to `{model_prefix}_epoch-%%d_state.pt` after each epoch, and the one with the best '
                          'validation metric to `{model_prefix}_best_epoch_state.pt`; for testing, this should be the full path '
                          'including the suffix, otherwise the one with the best validation metric will be used; '
                          'for training, `{auto}` can be used as part of the path to auto-generate a name, '
@@ -99,7 +99,7 @@ parser.add_argument('--lr-scheduler', type=str, default='flat+decay',
 parser.add_argument('--warmup-steps', type=int, default=0,
                     help='number of warm-up steps, only valid for `flat+linear` and `flat+cos` lr schedulers')
 parser.add_argument('--load-epoch', type=int, default=None,
-                    help='used to resume interrupted training, load model and optimizer state saved in the `epoch-%d_state.pt` and `epoch-%d_optimizer.pt` files')
+                    help='used to resume interrupted training, load model and optimizer state saved in the `epoch-%%d_state.pt` and `epoch-%%d_optimizer.pt` files')
 parser.add_argument('--start-lr', type=float, default=5e-3,
                     help='start learning rate')
 parser.add_argument('--batch-size', type=int, default=128,
@@ -118,7 +118,8 @@ parser.add_argument('--predict-output', type=str,
                     help='path to save the prediction output, support `.root` and `.awkd` format')
 parser.add_argument('--export-onnx', type=str, default=None,
                     help='export the PyTorch model to ONNX model and save it at the given path (path must ends w/ .onnx); '
-                         'needs to set `--data-config`, `--network-config`, and `--model-prefix` (requires the full model path)')
+                         'needs to set `--data-config`, `--network-config`, and `--model-prefix` (requires the full model path);'
+                         '--export-onnx auto can be used to auto generate export/model.onnx directory into the model path')
 parser.add_argument('--io-test', action='store_true', default=False,
                     help='test throughput of the dataloader')
 parser.add_argument('--copy-inputs', action='store_true', default=False,
@@ -232,7 +233,7 @@ def train_load(args):
                                    infinity_mode=args.steps_per_epoch is not None,
                                    in_memory=args.in_memory,
                                    name='train' + ('' if args.local_rank is None else '_rank%d' % args.local_rank))
-    val_data = SimpleIterDataset(val_file_dict, args.data_config, for_training=True,
+    val_data = SimpleIterDataset(val_file_dict, args.data_config, for_training=True, print_info=False,
                                  load_range_and_fraction=(val_range, args.data_fraction),
                                  file_fraction=args.file_fraction,
                                  fetch_by_files=args.fetch_by_files,
@@ -253,7 +254,7 @@ def train_load(args):
     return train_loader, val_loader, data_config, train_input_names, train_label_names
 
 
-def test_load(args):
+def test_load(args, print_info=True):
     """
     Loads the test data.
     :param args:
@@ -291,7 +292,7 @@ def test_load(args):
         filelist = file_dict[name]
         _logger.info('Running on test file group %s with %d files:\n...%s', name, len(filelist), '\n...'.join(filelist))
         num_workers = min(args.num_workers, len(filelist))
-        test_data = SimpleIterDataset({name: filelist}, args.data_config, for_training=False,
+        test_data = SimpleIterDataset({name: filelist}, args.data_config, for_training=False, print_info=print_info,
                                       load_range_and_fraction=((0, 1), args.data_fraction),
                                       fetch_by_files=True, fetch_step=1,
                                       name='test_' + name)
@@ -300,7 +301,7 @@ def test_load(args):
         return test_loader
 
     test_loaders = {name: functools.partial(get_test_loader, name) for name in file_dict}
-    data_config = SimpleIterDataset({}, args.data_config, for_training=False).config
+    data_config = SimpleIterDataset({}, args.data_config, for_training=False, print_info=False).config
     return test_loaders, data_config
 
 
@@ -313,6 +314,11 @@ def onnx(args, model, data_config, model_info):
     :param model_info:
     :return:
     """
+
+    if args.export_onnx == 'auto':
+        path = os.path.dirname( args.model_prefix )
+        args.export_onnx = f'{path}/export/model.onnx'
+
     assert (args.export_onnx.endswith('.onnx'))
     model_path = args.model_prefix
     _logger.info('Exporting model %s to ONNX' % model_path)
@@ -546,7 +552,7 @@ def model_setup(args, data_config):
         network_options['for_inference'] = True
     if args.use_amp:
         network_options['use_amp'] = True
-    model, model_info = network_module.get_model(data_config, **network_options)
+    model, model_info = network_module.get_model(data_config, **network_options, silent=True)
     if args.load_model_weights:
         model_state = torch.load(args.load_model_weights, map_location='cpu')
         missing_keys, unexpected_keys = model.load_state_dict(model_state, strict=False)
@@ -804,7 +810,7 @@ def main(args):
             return
         if training_mode:
             del train_loader, val_loader
-            test_loaders, data_config = test_load(args)
+            test_loaders, data_config = test_load(args, print_info=False)
 
         if not args.model_prefix.endswith('.onnx'):
             if args.predict_gpus:
@@ -852,8 +858,7 @@ def main(args):
                     save_awk(args, output_path, scores, labels, observers)
                 _logger.info('Written output to %s' % output_path, color='bold')
 
-
-if __name__ == '__main__':
+def run(parser):
     args = parser.parse_args()
 
     if args.samples_per_epoch is not None:
@@ -876,7 +881,8 @@ if __name__ == '__main__':
     if '{auto}' in args.model_prefix or '{auto}' in args.log:
         import hashlib
         import time
-        model_name = time.strftime('%Y%m%d-%H%M%S') + "_" + os.path.basename(args.network_config).replace('.py', '')
+        # model_name = time.strftime('%Y%m%d-%H%M%S') + "_" + os.path.basename(args.network_config).replace('.py', '')
+        model_name = os.path.basename(args.network_config).replace('.py', '') + '/' +time.strftime('%Y%m%d-%H%M%S') 
         if len(args.network_option):
             model_name = model_name + "_" + hashlib.md5(str(args.network_option).encode('utf-8')).hexdigest()
         model_name += '_{optim}_lr{lr}_batch{batch}'.format(lr=args.start_lr,
@@ -899,3 +905,5 @@ if __name__ == '__main__':
     _configLogger('weaver', stdout=stdout, filename=args.log)
 
     main(args)
+
+if __name__ == "__main__": run(parser)

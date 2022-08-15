@@ -11,7 +11,7 @@ from .logger import _logger, warn_once
 from .data.tools import _pad, _repeat_pad, _clip
 from .data.fileio import _read_files
 from .data.config import DataConfig, _md5
-from .data.preprocess import _apply_selection, _build_new_variables, _clean_up, AutoStandardizer, WeightMaker
+from .data.preprocess import _apply_selection, _get_selection_entries, _build_new_variables, _clean_up, AutoStandardizer, WeightMaker
 
 
 def _build_weights(table, data_config):
@@ -87,7 +87,6 @@ def _get_reweight_indices(weights, up_sample=True, max_resample=10, weight_scale
         keep_indices = all_indices[randwgt < np.repeat(weights, n_repeats)]
     return keep_indices.copy()
 
-
 def _check_labels(table):
     if np.all(table['_labelcheck_'] == 1):
         del table['_labelcheck_']
@@ -96,7 +95,6 @@ def _check_labels(table):
             raise RuntimeError('Inconsistent label definition: some of the entries are not assigned to any classes!')
         if np.any(table['_labelcheck_'] > 1):
             raise RuntimeError('Inconsistent label definition: some of the entries are assigned to multiple classes!')
-
 
 def _preprocess(table, data_config, options):
     # apply selection
@@ -132,6 +130,10 @@ def _load_next(data_config, filelist, load_range, options):
     indices = _preprocess(table, data_config, options)
     return table, indices
 
+def _get_entries(data_config, filelist, load_range, options):
+    table = _read_files(filelist, data_config.load_branches, load_range, treename=data_config.treename)
+    entries = _get_selection_entries(table, data_config.selection if options['training'] else data_config.test_time_selection)
+    return entries
 
 class _SimpleIter(object):
     r"""_SimpleIter
@@ -142,7 +144,6 @@ class _SimpleIter(object):
     def __init__(self, **kwargs):
         # inherit all properties from SimpleIterDataset
         self.__dict__.update(**kwargs)
-
         # executor to read files and run preprocessing asynchronously
         self.executor = ThreadPoolExecutor(max_workers=1) if self._async_load else None
 
@@ -286,6 +287,10 @@ class _SimpleIter(object):
         Z = {k: self.table[k][i].copy() for k in self._data_config.z_variables}
         return X, y, Z
 
+    def __len__(self):
+        if hasattr(self, 'length'): return self.length
+        self.length = _get_entries(self._data_config, self.worker_filelist, self.load_range, self._sampler_options)
+        return self.length
 
 class SimpleIterDataset(torch.utils.data.IterableDataset):
     r"""Base IterableDataset.
@@ -311,7 +316,7 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
         file_fraction (float): fraction of files to load.
     """
 
-    def __init__(self, file_dict, data_config_file, for_training=True, load_range_and_fraction=None,
+    def __init__(self, file_dict, data_config_file, for_training=True, print_info=True, load_range_and_fraction=None,
                  fetch_by_files=False, fetch_step=0.01, file_fraction=1, remake_weights=False, up_sample=True,
                  weight_scale=1, max_resample=10, async_load=True, infinity_mode=False, in_memory=False, name=''):
         self._iters = {} if infinity_mode or in_memory else None
@@ -347,7 +352,7 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
                          data_config_file)
 
         # load data config (w/ observers now -- so they will be included in the auto-generated yaml)
-        self._data_config = DataConfig.load(data_config_file)
+        self._data_config = DataConfig.load(data_config_file, print_info=print_info)
 
         if for_training:
             # produce variable standardization info if needed
@@ -367,10 +372,11 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
                 _logger.info(
                     'Found file %s w/ auto-generated preprocessing information, will use that instead!' %
                     data_config_file)
-            self._data_config = DataConfig.load(data_config_file, load_observers=False)
+            self._data_config = DataConfig.load(data_config_file, load_observers=False, print_info=False)
 
         # derive all variables added to self.__dict__
         self._init_args = set(self.__dict__.keys()) - _init_args
+        
 
     @property
     def config(self):
