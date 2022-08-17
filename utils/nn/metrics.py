@@ -3,6 +3,8 @@ import traceback
 import sklearn.metrics as _m
 from functools import partial
 from ..logger import _logger
+from torch_scatter import scatter_sum
+import torch
 
 # def _bkg_rejection(y_true, y_score, sig_eff):
 #     fpr, tpr, _ = _m.roc_curve(y_true, y_score)
@@ -44,11 +46,60 @@ def confusion_matrix(y_true, y_score):
         y_pred = y_score.argmax(1)
     return _m.confusion_matrix(y_true, y_pred, normalize='true')
 
+def ndcg_score(input, target, batch):
+    from .scatter_tools import scatter_sort
+    ranks = torch.arange( len(batch) ).to(input.device)
+    _, n_examples = batch.unique(return_counts=True)
+    offset = n_examples.cumsum(dim=0) - n_examples[0]
+    offset = torch.repeat_interleave(offset, n_examples).to(input.device)
+    ranks = ranks - offset
+
+    true_sort, _ = scatter_sort(target, batch, descending=True)
+    _, argout = scatter_sort(input, batch, descending=True)
+    pred_sort = target[argout]
+
+    def calc_dcg(rel):
+        num = 2**rel - 1
+        den = torch.log2(ranks + 2)
+        return scatter_sum(num/den, batch)
+
+    dcg = calc_dcg(pred_sort)
+    idcg = calc_dcg(true_sort)
+
+    ndcg = dcg/idcg
+    return ndcg.nanmean()
+
+def relhitk_score(input, target, batch, k=1):
+    from .scatter_tools import scatter_topk
+    pred_k = scatter_topk(input, batch, k=k)[1]
+    true_k1 = scatter_topk(target, batch, k=1)[1]
+    relhitk = (target[pred_k] >= target[true_k1]).any(dim=-1).float().mean()
+    return relhitk
+
+def nhitk_score(input, target, batch, k=8):
+    from .scatter_tools import scatter_topk
+    pred_topk = scatter_topk(input, batch, k=k)[1]
+    true_topk = scatter_topk(target, batch, k=k)[1]
+
+    n_pred_topk = target[pred_topk].sum(dim=-1)
+    n_true_topk = target[true_topk].sum(dim=-1)
+
+    nhitk = (n_pred_topk >= n_true_topk).float().mean()
+    return nhitk
+
+def top_label_score(input, target, batch):
+    from .scatter_tools import scatter_max
+    truemax, _ = scatter_max(target, batch)
+    _, predmax = scatter_max(input, batch)
+    return (target[predmax]/truemax).nanmean()
+
 
 _metric_dict = {
     'roc_auc_score': partial(_m.roc_auc_score, multi_class='ovo'),
     'roc_auc_score_matrix': roc_auc_score_ovo,
     'confusion_matrix': confusion_matrix,
+    'ndcg': ndcg_score,
+    'relhitk': relhitk_score,
     }
 
 

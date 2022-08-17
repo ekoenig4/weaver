@@ -3,7 +3,6 @@ import tqdm
 import time
 import torch
 
-
 from collections import defaultdict, Counter
 from .metrics import evaluate_metrics
 from ..data.tools import awkward, _concat
@@ -24,18 +23,6 @@ def _get_batch_ptr(batch_array):
   batch = torch.repeat_interleave(arange, shape[-1])
   batch = batch.reshape(shape)
   return batch
-
-from torch_scatter import scatter_max
-
-def scatter_topk(output, batch, k=1, dim=0):
-  values, args = [], []
-  copy = output.clone()
-  for _ in range(k):
-    v, a = scatter_max(copy, batch, dim=0)
-    copy[a] = -999
-    values.append(v)
-    args.append(a)
-  return torch.stack(values).T, torch.stack(args).T
 
 def _flatten_label(label, mask=None):
     if label.ndim > 1:

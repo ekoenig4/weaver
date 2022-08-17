@@ -546,7 +546,14 @@ def model_setup(args, data_config):
     :return: model, model_info, network_module, network_options
     """
     network_module = import_module(args.network_config.replace('.py', '').replace('/', '.'))
-    network_options = {k: ast.literal_eval(v) for k, v in args.network_option}
+
+    def literal_eval(v):
+        try:
+            return ast.literal_eval(v)
+        except ValueError:
+            return v
+
+    network_options = {k: literal_eval(v) for k, v in args.network_option}
     _logger.info('Network options: %s' % str(network_options))
     if args.export_onnx:
         network_options['for_inference'] = True
