@@ -117,6 +117,10 @@ def _sum_p4(pt, m, eta, phi, nobjs=8):
     p4 = functools.reduce(vector.Lorentz.add, p4s)
     return p4
 
+def _dphi(phi_1, phi_2):
+    dphi = phi_1 - phi_2
+    offset = 2.0*np.pi*(dphi < -np.pi) - 2.0*np.pi*(dphi >= np.pi)
+    return dphi + offset
 # def _boost_p4(p4, boost):
 #     return p4.boost_p4(boost)
 
@@ -130,7 +134,7 @@ def _get_variable_names(expr, exclude=['awkward', 'np', 'numpy', 'math','ak']):
 def _eval_expr(expr, table):
     tmp = {k: table[k] for k in _get_variable_names(expr)}
     tmp.update(
-        {'math': math, 'np': np, 'awkward': awkward, '_concat': _concat, '_stack': _stack, '_pad': _pad,
+        {'math': math, 'np': np, 'awkward': awkward, '_concat': _concat, '_stack': _stack, '_pad': _pad, '_dphi':_dphi,
          '_repeat_pad': _repeat_pad, '_clip': _clip, '_batch_knn': _batch_knn, '_sum_p4':_sum_p4, '_build_p4':_build_p4,
          '_batch_permute_indices': _batch_permute_indices, '_batch_argsort': _batch_argsort, '_rank_array':_rank_array,
          '_batch_gather': _batch_gather})

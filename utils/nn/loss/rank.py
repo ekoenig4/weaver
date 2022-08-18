@@ -1,7 +1,7 @@
 import torch
 
 class PointwiseLoss(torch.nn.MSELoss):
-    def forward(self, input, target, batch):
+    def forward(self, input, target, batch=None):
         return super().forward(input, target)
 
 class PairwiseLoss(torch.nn.MarginRankingLoss):

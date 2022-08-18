@@ -49,6 +49,19 @@ def set_trainer(args):
                 callbacks=LitProgressBar()
             )
 
+def lr_finder(model, loss_func, opt, data_config, train_loader, start_lr, end_lr, num_iter):
+    min_lr, max_lr = float(start_lr), float(end_lr)
+    if start_lr > end_lr: min_lr, max_lr = end_lr, start_lr
+    model.set(data_config, loss_func, opt)
+    lr_finder = trainer.tuner.lr_find(model, train_dataloaders=train_loader, min_lr=min_lr, max_lr=max_lr, num_training=int(num_iter))
+    # Plot with
+    fig = lr_finder.plot(suggest=True)
+    fig.savefig('lr_finder.png')
+    
+    # Pick point based on plot, or get suggestion
+    new_lr = lr_finder.suggestion()
+    _logger.info(f"suggested starting lr={new_lr:0.1e}", color="green")
+
 def train_lightning(model, loss_func, opt, scheduler, train_loader, dev, epoch, steps_per_epoch=None, grad_scaler=None, tb_helper=None):
     assert isinstance(model, Lightning), "Model must be a subclass of Lightning"
 

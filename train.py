@@ -767,9 +767,12 @@ def main(args):
         # lr finder: keep it after all other setups
         if args.lr_finder is not None:
             start_lr, end_lr, num_iter = args.lr_finder.replace(' ', '').split(',')
+            if args.lightning_mode:
+                lt.lr_finder(model, loss_func, opt, data_config, train_loader, start_lr, end_lr, num_iter)
+                return
             from utils.lr_finder import LRFinder
             lr_finder = LRFinder(model, opt, loss_func, device=dev, input_names=train_input_names,
-                                 label_names=train_label_names)
+                                label_names=train_label_names)
             lr_finder.range_test(train_loader, start_lr=float(start_lr), end_lr=float(end_lr), num_iter=int(num_iter))
             lr_finder.plot(output='lr_finder.png')  # to inspect the loss-learning rate graph
             return
