@@ -124,6 +124,8 @@ parser.add_argument('--io-test', action='store_true', default=False,
                     help='test throughput of the dataloader')
 parser.add_argument('--copy-inputs', action='store_true', default=False,
                     help='copy input files to the current dir (can help to speed up dataloading when running over remote files, e.g., from EOS)')
+parser.add_argument('--recopy-inputs', action='store_true', default=False,
+                    help='recopy input files to the current dir (can help to speed up dataloading when running over remote files, e.g., from EOS)')
 parser.add_argument('--log', type=str, default='',
                     help='path to the log file; `{auto}` can be used as part of the path to auto-generate a name, based on the timestamp and network configuration')
 parser.add_argument('--print', action='store_true', default=False,
@@ -132,6 +134,8 @@ parser.add_argument('--profile', action='store_true', default=False,
                     help='run the profiler')
 parser.add_argument('--backend', type=str, choices=['gloo', 'nccl', 'mpi'], default=None,
                     help='backend for distributed training')
+parser.add_argument('--debug', action='store_true', default=False,
+                    help='enable debug logging')
 
 
 def to_filelist(args, mode='train'):
@@ -170,10 +174,14 @@ def to_filelist(args, mode='train'):
                 new_file_dict[name] = new_files
             file_dict = new_file_dict
 
-    if args.copy_inputs:
+    if args.copy_inputs or args.recopy_inputs:
         import tempfile
-        tmpdir = tempfile.mkdtemp()
-        if os.path.exists(tmpdir):
+
+        tmpdir = f"/storage/local/data1/gpuscratch/{os.getenv('USER')}"
+        if not os.path.isdir(tmpdir): 
+            tmpdir = tempfile.mkdtemp()
+
+        if os.path.exists(tmpdir) and args.recopy_inputs:
             shutil.rmtree(tmpdir)
         new_file_dict = {name: [] for name in file_dict}
         for name, files in file_dict.items():
@@ -181,8 +189,12 @@ def to_filelist(args, mode='train'):
                 dest = os.path.join(tmpdir, src.lstrip('/'))
                 if not os.path.exists(os.path.dirname(dest)):
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
-                shutil.copy2(src, dest)
-                _logger.info('Copied file %s to %s' % (src, dest))
+
+                if not os.path.exists(dest):
+                    shutil.copy2(src, dest)
+                    _logger.info('Copied file %s to %s' % (src, dest))
+                else:
+                    _logger.info('Using existing copied file %s' % dest)
                 new_file_dict[name].append(dest)
             if len(files) != len(new_file_dict[name]):
                 _logger.error('Only %d/%d files copied for %s file group %s',
@@ -912,7 +924,8 @@ def run(parser):
         args.log += '.%03d' % args.local_rank
         if args.local_rank != 0:
             stdout = None
-    _configLogger('weaver', stdout=stdout, filename=args.log)
+    from logging import INFO, DEBUG
+    _configLogger('weaver', stdout=stdout, filename=args.log, loglevel=INFO if not args.debug else DEBUG)
 
     main(args)
 

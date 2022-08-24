@@ -10,7 +10,7 @@ def scatter_sort(src: torch.Tensor, index: torch.Tensor, dim=0, descending=False
 
 def scatter_topk(src: torch.Tensor, index: torch.Tensor, k=1, dim=0):
   values, args = [], []
-  copy = src.clone()
+  copy = src.clone().float()
   for _ in range(k):
     v, a = scatter_max(copy, index, dim=dim)
     copy[a] = -999
