@@ -177,9 +177,11 @@ def to_filelist(args, mode='train'):
     if args.copy_inputs or args.recopy_inputs:
         import tempfile
 
-        tmpdir = f"/storage/local/data1/gpuscratch/{os.getenv('USER')}"
+        tmpdir = f"/storage/local/data1/gpuscratch/"
         if not os.path.isdir(tmpdir): 
             tmpdir = tempfile.mkdtemp()
+        if not os.path.isdir(f'{tmpdir}/{os.getenv("USER")}'):
+            os.makedirs(f'{tmpdir}/{os.getenv("USER")}', exist_ok=True)
 
         if os.path.exists(tmpdir) and args.recopy_inputs:
             shutil.rmtree(tmpdir)
