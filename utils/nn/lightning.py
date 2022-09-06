@@ -83,44 +83,38 @@ class Lightning(pl.LightningModule):
             'loss': self.get_loss(output, label, batch_ptr),
             **self.get_metrics(output, label, batch_ptr)
         }
+        arrays = {
+            'score':output,
+            'label':label,
+        }
 
         self.log_scalar(metrics, tag=tag, prog_bar=True, on_epoch=True)
-        return metrics
+        return metrics, arrays, Z
 
     def training_step(self, batch, batch_idx):
-        return self.shared_step(batch, batch_idx, tag='train')
+        metrics, arrays, observers = self.shared_step(batch, batch_idx, tag='train')
+        return metrics
 
     def validation_step(self, batch, batch_idx):
-        metrics = self.shared_step(batch, batch_idx, tag='val')
+        metrics, arrays, observers = self.shared_step(batch, batch_idx, tag='val')
         return { f'val_{key}':value for key,value in metrics.items() }
 
     def on_test_start(self):
-        self.scores = []
-        self.labels = defaultdict(list)
+        self.arrays = defaultdict(list)
         self.observers = defaultdict(list)
 
     def test_step(self, batch, batch_idx):
-        inputs, (label, label_mask), batch_ptr, Z = self.get_input(*batch)
-        output = self(*inputs)
-        output, label, batch_ptr = self.flatten_output(output, label, batch_ptr, label_mask)
+        metrics, arrays, observers = self.shared_step(batch, batch_idx, tag='test')
 
-        metrics = {
-            'loss': self.get_loss(output, label, batch_ptr),
-            **self.get_metrics(output, label, batch_ptr)
-        }
-
-        self.log_scalar(metrics, tag='test', prog_bar=True, on_epoch=True)
-
-        self.scores.append( output.detach().cpu().numpy() )
-        self.labels['label'].append( label.detach().cpu().numpy() )
-        for k, v in Z.items():
-            self.observers[k].append(v.cpu().numpy())
+        for key, array in arrays.items():
+            self.arrays[key].append( array.detach().cpu().numpy() )
+        for key, array in observers.items():
+            self.observers[key].append( array.detach().cpu().numpy() )
 
         return {f'test_{key}': value for key, value in metrics.items()}
 
     def on_test_end(self):
-        self.scores = np.concatenate(self.scores)
-        self.labels = { label:np.concatenate(array) for label, array in self.labels.items() }
+        self.arrays = { key:np.concatenate(array) for key, array in self.arrays.items() }
         self.observers = { field:np.concatenate(array) for field, array in self.observers.items() }
 
     def configure_optimizers(self):

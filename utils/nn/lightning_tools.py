@@ -141,4 +141,7 @@ def evaluate_lightning(model, test_loader, dev, epoch, for_training=True, loss_f
         # return total_loss / count
     else:
         # convert 2D labels/scores
-        return loss, model.scores, model.labels, model.observers
+        scores = model.arrays['score']
+        labels = { key:array for key, array in model.arrays.items() if key != 'score' }
+        observers = model.observers
+        return loss, scores, labels, observers
