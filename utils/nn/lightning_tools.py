@@ -65,6 +65,7 @@ def lr_finder(model, loss_func, opt, data_config, train_loader, start_lr, end_lr
 def train_lightning(model, loss_func, opt, scheduler, train_loader, dev, epoch, steps_per_epoch=None, grad_scaler=None, tb_helper=None):
     assert isinstance(model, Lightning), "Model must be a subclass of Lightning"
 
+    model.train()
     data_config = train_loader.dataset.config
     model.set(data_config, loss_func, opt=opt)
 
@@ -99,6 +100,7 @@ def train_lightning(model, loss_func, opt, scheduler, train_loader, dev, epoch, 
 def evaluate_lightning(model, test_loader, dev, epoch, for_training=True, loss_func=None, steps_per_epoch=None, eval_metrics=None, tb_helper=None):
     assert isinstance(model, Lightning), "Model must be a subclass of Lightning"
 
+    model.eval()
     if loss_func is None:
         loss_func = lambda *args: torch.Tensor([0])
 

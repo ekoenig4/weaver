@@ -85,10 +85,13 @@ class Lightning(pl.LightningModule):
         }
         arrays = {
             'score':output,
-            'label':label,
+            self.config.label_names[0]:label,
+            'batch':batch_ptr
         }
 
         self.log_scalar(metrics, tag=tag, prog_bar=True, on_epoch=True)
+        self.log_histos({key:value for key,value in arrays.items() if key in ('score')}, tag=tag)
+
         return metrics, arrays, Z
 
     def training_step(self, batch, batch_idx):
@@ -130,6 +133,7 @@ class Lightning(pl.LightningModule):
     def log_histos(self, histos, tag=None):
         if tag is None: return
         for key, histo in histos.items():
+            if histo.ndim > 1: histo = histo[:,1]
             self.logger.experiment.add_histogram(
                 f'{key}/{tag}',
                 histo,

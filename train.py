@@ -628,7 +628,18 @@ def save_root(args, output_path, data_config, scores, labels, observers):
     """
     from utils.data.fileio import _write_root
     output = {}
-    if args.regression_mode:
+
+    if args.lightning_mode:
+        batch = labels.pop('batch', None)
+        if batch is None:
+            import awkward as ak
+            _, n_objs = np.unique(batch, return_counts=True)
+            scores = ak.unflatten(scores, n_objs)
+            labels = { key: ak.unflatten(value, n_objs) for key, value in labels.items() }
+        output[data_config.label_names[0]] = labels[data_config.label_names[0]]
+        output['output'] = scores
+
+    elif args.regression_mode:
         output[data_config.label_names[0]] = labels[data_config.label_names[0]]
         output['output'] = scores
     else:
