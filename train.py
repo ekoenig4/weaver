@@ -139,6 +139,8 @@ parser.add_argument('--debug', action='store_true', default=False,
 
 
 def to_filelist(args, mode='train'):
+    from utils.data import eos
+
     if mode == 'train':
         flist = args.data_train
     elif mode == 'val':
@@ -153,7 +155,7 @@ def to_filelist(args, mode='train'):
             name, fp = f.split(':')
         else:
             name, fp = '_', f
-        files = glob.glob(fp)
+        files = eos.glob(fp)
         if name in file_dict:
             file_dict[name] += files
         else:
@@ -178,13 +180,16 @@ def to_filelist(args, mode='train'):
         import tempfile
 
         tmpdir = f"/storage/local/data1/gpuscratch/"
+        if not os.path.exists(tmpdir):
+            tmpdir = '/tmp/'
+
+        tmpdir = os.path.join(tmpdir,os.getenv("USER"))
         if not os.path.isdir(tmpdir): 
             tmpdir = tempfile.mkdtemp()
-        if not os.path.isdir(f'{tmpdir}/{os.getenv("USER")}'):
-            os.makedirs(f'{tmpdir}/{os.getenv("USER")}', exist_ok=True)
 
         if os.path.exists(tmpdir) and args.recopy_inputs:
             shutil.rmtree(tmpdir)
+
         new_file_dict = {name: [] for name in file_dict}
         for name, files in file_dict.items():
             for src in files:
@@ -192,8 +197,9 @@ def to_filelist(args, mode='train'):
                 if not os.path.exists(os.path.dirname(dest)):
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
 
+                print(dest, os.path.exists(dest))
                 if not os.path.exists(dest):
-                    shutil.copy2(src, dest)
+                    eos.copy(src, dest)
                     _logger.info('Copied file %s to %s' % (src, dest))
                 else:
                     _logger.info('Using existing copied file %s' % dest)

@@ -61,11 +61,12 @@ def _read_awkd(filepath, branches, load_range=None):
 def _read_files(filelist, branches, load_range=None, show_progressbar=False, **kwargs):
     import os
     from collections import defaultdict
+    from . import eos
     branches = list(branches)
     table = defaultdict(list)
     if show_progressbar:
         filelist = tqdm.tqdm(filelist)
-    for filepath in filelist:
+    for filepath in map(eos.fullpath, filelist):
         ext = os.path.splitext(filepath)[1]
         if ext not in ('.h5', '.root', '.awkd'):
             raise RuntimeError('File %s of type `%s` is not supported!' % (filepath, ext))
