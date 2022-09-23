@@ -24,6 +24,16 @@ def _get_batch_ptr(batch_array):
   batch = batch.reshape(shape)
   return batch
 
+def batch_binning(tensor, bins, overflow=True):
+    if overflow:
+        centers = (bins[1:]+bins[:-1])/2
+        tensor = tensor.clamp(centers[0], centers[-1])
+
+    lo_edge, hi_edge = bins[:-1], bins[1:]
+    binned = (tensor >= lo_edge) & (tensor < hi_edge)
+
+    return binned.long()
+
 def _flatten_label(label, mask=None):
     if label.ndim > 1:
         label = label.view(-1)
