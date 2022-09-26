@@ -174,4 +174,4 @@ def _combinations(items, ks):
 
 def torch_combinations(nitems, ks):
    combs = list(_combinations(np.arange(nitems), ks))
-   return torch.Tensor(combs)
+   return torch.Tensor(combs).long()

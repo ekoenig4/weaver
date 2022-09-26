@@ -280,6 +280,7 @@ def test_load(args, print_info=True):
     :param args:
     :return: test_loaders, data_config
     """
+    from utils.data import eos
     # keyword-based --data-test: 'a:/path/to/a b:/path/to/b'
     # split --data-test: 'a%10:/path/to/a/*'
     file_dict = {}
@@ -292,7 +293,7 @@ def test_load(args, print_info=True):
                 split_dict[name] = int(split)
         else:
             name, fp = '', f
-        files = glob.glob(fp)
+        files = eos.glob(fp)
         if name in file_dict:
             file_dict[name] += files
         else:
@@ -923,7 +924,7 @@ def run(parser):
         import hashlib
         import time
         # model_name = time.strftime('%Y%m%d-%H%M%S') + "_" + os.path.basename(args.network_config).replace('.py', '')
-        model_name = os.path.basename(args.network_config).replace('.py', '') + '/' +time.strftime('%Y%m%d-%H%M%S') 
+        model_name = os.path.basename(args.network_config).replace('.py', '') + '/' +time.strftime('%Y%m%d') 
         if len(args.network_option):
             model_name = model_name + "_" + hashlib.md5(str(args.network_option).encode('utf-8')).hexdigest()
         model_name += '_{optim}_lr{lr}_batch{batch}'.format(lr=args.start_lr,
