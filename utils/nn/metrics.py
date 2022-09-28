@@ -69,11 +69,20 @@ def ndcg_score(input, target, batch):
     ndcg = dcg/idcg
     return ndcg.nanmean()
 
-def relhitk_score(input, target, batch, k=1):
-    from .scatter_tools import scatter_topk
+def relhitk_score(input, target, batch, k=1, mask=None):
+    from .scatter_tools import scatter_topk, scatter_sum
     pred_k = scatter_topk(input, batch, k=k)[1]
     true_k1 = scatter_topk(target, batch, k=1)[1]
-    relhitk = (target[pred_k] >= target[true_k1]).any(dim=-1).float().mean()
+    relhitk = (target[pred_k] >= target[true_k1]).any(dim=-1)
+
+    if mask is not None:
+        mask = scatter_sum(mask, batch)>0
+        relhitk = relhitk[mask]
+        
+        if len(relhitk) == 0:
+            relhitk = torch.zeros_like(mask)
+
+    relhitk = relhitk.float().mean()
     return relhitk
 
 def nhitk_score(input, target, batch, k=8):
