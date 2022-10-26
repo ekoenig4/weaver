@@ -57,7 +57,7 @@ def scatter_jet_pair_class_reconstruction(score, batch, n=6):
         n (int, optional): number of jets to select. Defaults to 6.
 
     Returns:
-        _type_: _description_
+        (selected scores, selected categories, select jet args): a tuple of selected scores of the jets, selected categories of the jets, and the selected jet args
     """
     score = score.clone() # clone the scores so we dont overwrite the original
     njets = batch.unique(return_counts=True)[1] # count the number of jets in each event
