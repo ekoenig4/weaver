@@ -45,7 +45,7 @@ def scatter_randperm(src: torch.Tensor, index: torch.Tensor):
   randperm = randperm[reindex]
   return src[randperm], randperm
 
-def scatter_jet_pair_class_reconstruction(score, batch, n=6):
+def scatter_jet_pair_class_reconstruction(score, batch, n=6, return_event_jetarg=False):
     """Iteratively select the highest scoring jets with respect to class pairs
     B - batch size
     N - number of jets for each batch
@@ -55,6 +55,7 @@ def scatter_jet_pair_class_reconstruction(score, batch, n=6):
         score (torch.Tensor): tensor of jet scores for each class. shape (B*N, C)
         batch (torch.Tensor): tensor of jet event indices. shape (B*N)
         n (int, optional): number of jets to select. Defaults to 6.
+        return_event_jetarg (bool, optional): if true, jetarg will be relative to each event. Defaults to false, jetarg will be relative to flattened list
 
     Returns:
         (selected scores, selected categories, select jet args): a tuple of selected scores of the jets, selected categories of the jets, and the selected jet args
@@ -96,6 +97,11 @@ def scatter_jet_pair_class_reconstruction(score, batch, n=6):
     values = torch.cat(values, dim=-1)
     category = torch.cat(category, dim=-1)
     jetargs = torch.cat(jetargs, dim=-1)
+
+    if return_event_jetarg:
+      # calculate the arg offset for each jet in the event
+      offset = njets.cumsum(dim=0) - njets[0]
+      jetargs = jetargs - offset.unsqueeze(1)
 
     return values, category, jetargs
 
