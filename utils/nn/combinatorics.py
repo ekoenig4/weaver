@@ -1,6 +1,8 @@
 import torch, itertools
 import numpy as np
 
+  
+
 # v2 is faster on CPU maybe...
 @torch.jit.script
 def get_group_feature_v2(x, group_idx):

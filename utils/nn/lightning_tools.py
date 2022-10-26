@@ -39,7 +39,9 @@ def set_trainer(args):
                 accelerator="gpu" if args.gpus else "cpu",
                 precision=16,
                 max_epochs=1,
-                max_steps=args.steps_per_epoch if args.steps_per_epoch else -1,
+                # max_steps=args.steps_per_epoch if args.steps_per_epoch else -1,
+                limit_train_batches=args.steps_per_epoch if args.steps_per_epoch else 1.0,
+                limit_val_batches=args.steps_per_epoch_val if args.steps_per_epoch_val else 1.0,
                 enable_checkpointing=False, # Weaver already handles checkpoints
                 default_root_dir=path,
                 logger=TensorBoardLogger(

@@ -352,7 +352,7 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
                          data_config_file)
 
         # load data config (w/ observers now -- so they will be included in the auto-generated yaml)
-        self._data_config = DataConfig.load(data_config_file, print_info=print_info)
+        self._data_config = DataConfig.load(data_config_file, print_info=print_info, load_monitor=for_training)
 
         if for_training:
             # produce variable standardization info if needed

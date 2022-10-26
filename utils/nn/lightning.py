@@ -133,6 +133,7 @@ class Lightning(pl.LightningModule):
     def log_histos(self, histos, tag=None):
         if tag is None: return
         for key, histo in histos.items():
+            if histo.nelement() == 0: continue
             if histo.ndim > 1: histo = histo[:,1]
             self.logger.experiment.add_histogram(
                 f'{key}/{tag}',
